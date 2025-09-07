@@ -1,0 +1,144 @@
+name: "Remote deploy with Pachca notify"
+description: "SSH to host, executes build/up and sends start/success/error to Pachca"
+author: "morzecrew"
+
+branding:
+  icon: "upload-cloud"
+  color: "blue"
+
+inputs:
+  host:
+    required: true
+    description: "Remote host"
+
+  username:
+    required: true
+    description: "SSH user"
+
+  ssh_key:
+    required: true
+    description: "Private key contents (PEM)"
+
+  repo_dir:
+    required: true
+    description: "Repo directory"
+
+  branch:
+    required: true
+    description: "Branch"
+
+  app_name:
+    required: true
+    description: "App name"
+
+  action_url:
+    required: true
+    description: "Action URL"
+
+  commit_msg:
+    required: true
+    description: "Commit message"
+
+  commit_url:
+    required: true
+    description: "Commit URL"
+
+  pachca_token:
+    required: true
+    description: "Pachca API token"
+
+  pachca_discussion_id:
+    required: true
+    description: "Pachca channel/discussion id"
+
+  build_cmd:
+    required: false
+    default: "docker compose build"
+    description: "Build command"
+
+  up_cmd:
+    required: false
+    default: "docker compose up -d"
+    description: "Up command"
+
+runs:
+  using: "composite"
+  steps:
+    - id: ssh
+      uses: appleboy/ssh-action@v1
+      env:
+        APP_NAME: ${{ inputs.app_name }}
+        REPO_DIR: ${{ inputs.repo_dir }}
+        BRANCH: ${{ inputs.branch }}
+
+        ACTION_URL: ${{ inputs.action_url }}
+        COMMIT_MSG: ${{ inputs.commit_msg }}
+        COMMIT_URL: ${{ inputs.commit_url }}
+
+        PACHCA_TOKEN: ${{ inputs.pachca_token }}
+        PACHCA_DISCUSSION_ID: ${{ inputs.pachca_discussion_id }}
+
+        BUILD_CMD: ${{ inputs.build_cmd }}
+        UP_CMD: ${{ inputs.up_cmd }}
+      with:
+        host: ${{ inputs.host }}
+        username: ${{ inputs.username }}
+        key: ${{ inputs.ssh_key }}
+        envs: APP_NAME,REPO_DIR,BRANCH,ACTION_URL,COMMIT_MSG,COMMIT_URL,PACHCA_TOKEN,PACHCA_DISCUSSION_ID,BUILD_CMD,UP_CMD
+        script: |
+          set -Eeuo pipefail
+          test -n "${REPO_DIR}" && cd "$REPO_DIR"
+
+          cat > /tmp/deploy.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -Eeuo pipefail
+          APP_NAME="${APP_NAME:-App}"
+          REPO_DIR="${REPO_DIR:-$HOME/app}"
+          BRANCH="${BRANCH:-}"
+
+          ACTION_URL="${ACTION_URL:-}"
+          COMMIT_MSG="${COMMIT_MSG:-}"
+          COMMIT_URL="${COMMIT_URL:-}"
+
+          : "${PACHCA_TOKEN:?PACHCA_TOKEN is required}"
+          : "${PACHCA_DISCUSSION_ID:?PACHCA_DISCUSSION_ID is required}"
+
+          BUILD_CMD="${BUILD_CMD:-docker compose build}"
+          UP_CMD="${UP_CMD:-docker compose up -d}"
+
+          notify() {
+            local icon="$1"   # ⚠️ | ✅ | ❌
+            local title="$2"  # started | success | error
+            local content="${icon} Deploy **${APP_NAME}** ${title} \n branch: **${BRANCH:-unknown}**\n commit: [${COMMIT_MSG}](${COMMIT_URL})\n\n[deploy details](${ACTION_URL})"
+            curl -sS --location 'https://api.pachca.com/api/shared/v1/messages' \
+              --header 'Content-Type: application/json' \
+              --header "Authorization: Bearer ${PACHCA_TOKEN}" \
+              --data "{
+                \"message\": { \"entity_type\": \"channel\", \"entity_id\": \"${PACHCA_DISCUSSION_ID}\", \"content\": \"${content}\" }
+              }" >/dev/null
+          }
+
+          cd "$REPO_DIR"
+          git fetch --all --prune
+          git checkout "${BRANCH}"
+          git pull --ff-only
+
+          notify "⚠️" "started"
+
+          set +e
+          bash -lc "${BUILD_CMD}"; BUILD_EXIT=$?
+          bash -lc "${UP_CMD}";    UP_EXIT=$?
+          set -e
+
+          if [[ $BUILD_EXIT -eq 0 && $UP_EXIT -eq 0 ]]; then
+            notify "✅" "success"
+            exit 0
+          else
+            notify "❌" "error"
+            exit 1
+          fi
+          EOF
+
+          chmod +x /tmp/deploy.sh
+          /tmp/deploy.sh
+          rm -f /tmp/deploy.sh

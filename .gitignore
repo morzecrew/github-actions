@@ -1,0 +1,15 @@
+# IDE/OS
+.DS_Store
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# Python venv
+venv/
+.env/
+
+# Node (если вдруг решишь JS action добавить)
+node_modules/
+dist/

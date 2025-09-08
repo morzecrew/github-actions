@@ -92,6 +92,7 @@ runs:
           cat > /tmp/deploy.sh <<'EOF'
           #!/usr/bin/env bash
           set -Eeuo pipefail
+
           APP_NAME="${APP_NAME:-App}"
           REPO_DIR="${REPO_DIR:-$HOME/app}"
           BRANCH="${BRANCH:-}"
@@ -106,16 +107,39 @@ runs:
           BUILD_CMD="${BUILD_CMD:-docker compose build}"
           UP_CMD="${UP_CMD:-docker compose up -d}"
 
+          API_BASE="https://api.pachca.com/api/shared/v1"
+
           notify() {
-            local icon="$1"   # ⚠️ | ✅ | ❌
-            local title="$2"  # started | success | error
+            local icon="$1"
+            local title="$2"
             local content="${icon} Deploy **${APP_NAME}** ${title} \n branch: **${BRANCH:-unknown}**\n commit: [${COMMIT_MSG}](${COMMIT_URL})\n\n[deploy details](${ACTION_URL})"
-            curl -sS --location 'https://api.pachca.com/api/shared/v1/messages' \
+
+            local payload
+            payload=$(jq -Rn \
+              --arg entity_type "channel" \
+              --arg entity_id "${PACHCA_DISCUSSION_ID}" \
+              --arg content "$content" \
+              '{message:{entity_type:$entity_type, entity_id:$entity_id, content:$content}}')
+
+            local resp
+            resp=$(curl -sS --location "${API_BASE}/messages" \
               --header 'Content-Type: application/json' \
               --header "Authorization: Bearer ${PACHCA_TOKEN}" \
-              --data "{
-                \"message\": { \"entity_type\": \"channel\", \"entity_id\": \"${PACHCA_DISCUSSION_ID}\", \"content\": \"${content}\" }
-              }" >/dev/null
+              --data "$payload")
+
+            jq -r '.data.id // empty' <<<"$resp"
+          }
+
+          delete_message() {
+            local id="${1:-}"
+
+            [[ -z "$id" ]] && return 0
+
+            curl -sS -X DELETE --location "${API_BASE}/messages/${id}" \
+              --header "Authorization: Bearer ${PACHCA_TOKEN}" >/dev/null || {
+                echo "warn: failed to delete message id=${id}" >&2
+                return 0
+              }
           }
 
           cd "$REPO_DIR"
@@ -123,7 +147,7 @@ runs:
           git checkout "${BRANCH}"
           git pull --ff-only
 
-          notify "⚠️" "started"
+          START_MSG_ID="$(notify "⚠️" "started")"
 
           set +e
           bash -lc "${BUILD_CMD}"; BUILD_EXIT=$?
@@ -131,10 +155,12 @@ runs:
           set -e
 
           if [[ $BUILD_EXIT -eq 0 && $UP_EXIT -eq 0 ]]; then
-            notify "✅" "success"
+            notify "✅" "success" >/dev/null
+            delete_message "$START_MSG_ID"
             exit 0
           else
-            notify "❌" "error"
+            notify "❌" "error" >/dev/null
+            delete_message "$START_MSG_ID"
             exit 1
           fi
           EOF

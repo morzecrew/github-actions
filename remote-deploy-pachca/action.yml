@@ -112,7 +112,7 @@ runs:
           notify() {
             local icon="$1"
             local title="$2"
-            local content="${icon} Deploy **${APP_NAME}** ${title} \n branch: **${BRANCH:-unknown}**\n commit: [${COMMIT_MSG}](${COMMIT_URL})\n\n[deploy details](${ACTION_URL})"
+            local content="```\n${icon} Deploy **${APP_NAME}** ${title} \n branch: **${BRANCH:-unknown}**\n commit: [${COMMIT_MSG}](${COMMIT_URL})\n\n[deploy details](${ACTION_URL})\n```"
 
             local payload
             payload=$(jq -Rn \
@@ -156,11 +156,11 @@ runs:
 
           if [[ $BUILD_EXIT -eq 0 && $UP_EXIT -eq 0 ]]; then
             notify "✅" "success" >/dev/null
-            delete_message "$START_MSG_ID"
+            # delete_message "$START_MSG_ID"
             exit 0
           else
             notify "❌" "error" >/dev/null
-            delete_message "$START_MSG_ID"
+            # delete_message "$START_MSG_ID"
             exit 1
           fi
           EOF

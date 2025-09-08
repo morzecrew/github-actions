@@ -112,18 +112,17 @@ runs:
           notify() {
             local icon="$1"
             local title="$2"
+            # local content="\`\`\`\n${icon} Deploy **${APP_NAME}** ${title} \n branch: **${BRANCH:-unknown}**\n commit: [${COMMIT_MSG}](${COMMIT_URL})\n\n[deploy details](${ACTION_URL})\n\`\`\`"
 
             local content
-            content=$(cat <<EOF
-          \`\`\`
-          ${icon} Deploy **${APP_NAME}** ${title}
-          branch: **${BRANCH:-unknown}**
-          commit: [${COMMIT_MSG:-unknown}](${COMMIT_URL:-unknown})
-
-          [deploy details](${ACTION_URL:-unknown})
-          \`\`\`
-          EOF
-          )
+            content="$(printf '%s\n' \
+              '```' \
+              "${icon} Deploy **${APP_NAME}** ${title}" \
+              "branch: **${BRANCH:-unknown}**" \
+              "commit: [${COMMIT_MSG:-unknown}](${COMMIT_URL:-unknown})" \
+              '' \
+              "[deploy details](${ACTION_URL:-unknown})" \
+              '```')"
 
             local payload
             payload=$(jq -Rn \

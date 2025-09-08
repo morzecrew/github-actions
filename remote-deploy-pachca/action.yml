@@ -116,13 +116,11 @@ runs:
 
             local content
             content="$(printf '%s\n' \
-              '```' \
               "${icon} Deploy **${APP_NAME}** ${title}" \
               "branch: **${BRANCH:-unknown}**" \
               "commit: [${COMMIT_MSG:-unknown}](${COMMIT_URL:-unknown})" \
               '' \
-              "[deploy details](${ACTION_URL:-unknown})" \
-              '```')"
+              "[deploy details](${ACTION_URL:-unknown})")"
 
             local payload
             payload=$(jq -Rn \

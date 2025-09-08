@@ -60,6 +60,11 @@ inputs:
     required: false
     default: "docker compose up -d"
     description: "Up command"
+  
+  send_start_message:
+    required: false
+    default: "true"
+    description: "Send start message"
 
 runs:
   using: "composite"
@@ -80,11 +85,13 @@ runs:
 
         BUILD_CMD: ${{ inputs.build_cmd }}
         UP_CMD: ${{ inputs.up_cmd }}
+
+        SEND_START_MESSAGE: ${{ inputs.send_start_message }}
       with:
         host: ${{ inputs.host }}
         username: ${{ inputs.username }}
         key: ${{ inputs.ssh_key }}
-        envs: APP_NAME,REPO_DIR,BRANCH,ACTION_URL,COMMIT_MSG,COMMIT_URL,PACHCA_TOKEN,PACHCA_DISCUSSION_ID,BUILD_CMD,UP_CMD
+        envs: APP_NAME,REPO_DIR,BRANCH,ACTION_URL,COMMIT_MSG,COMMIT_URL,PACHCA_TOKEN,PACHCA_DISCUSSION_ID,BUILD_CMD,UP_CMD,SEND_START_MESSAGE
         script: |
           set -Eeuo pipefail
           test -n "${REPO_DIR}" && cd "$REPO_DIR"
@@ -155,7 +162,7 @@ runs:
           git checkout "${BRANCH}"
           git pull --ff-only
 
-          START_MSG_ID="$(notify "⚠️" "started")"
+          [[ "${SEND_START_MESSAGE:-true}" == "true" ]] && START_MSG_ID="$(notify "⚠️" "started")"
 
           set +e
           bash -lc "${BUILD_CMD}"; BUILD_EXIT=$?
@@ -164,11 +171,11 @@ runs:
 
           if [[ $BUILD_EXIT -eq 0 && $UP_EXIT -eq 0 ]]; then
             notify "✅" "success" >/dev/null
-            # delete_message "$START_MSG_ID"
+            # [[ "${SEND_START_MESSAGE:-true}" == "true" ]] && delete_message "$START_MSG_ID"
             exit 0
           else
             notify "❌" "error" >/dev/null
-            # delete_message "$START_MSG_ID"
+            # [[ "${SEND_START_MESSAGE:-true}" == "true" ]] && delete_message "$START_MSG_ID"
             exit 1
           fi
           EOF
